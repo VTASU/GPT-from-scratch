@@ -13,14 +13,14 @@ from torch.nn import functional as F
 
 # Hyperparameters
 torch.manual_seed(1337)
-batch_size = 4 # how many INDEPENDENT sequences will we process in parallel?
+batch_size = 32 # how many INDEPENDENT sequences will we process in parallel?
 block_size = 8 # what is the maximum context length for predictions?
 embedding_size = 32
 train_val_split = 0.9
-eval_iters = 100
-max_iters = 100
-eval_interval = 10
-learning_rate = 3e-4
+eval_iters = 200
+max_iters = 5000
+eval_interval = 500
+learning_rate = 1e-3
 head_size = 16
 
 # GPU
@@ -92,13 +92,21 @@ class Head(nn.Module):
         wei = F.softmax(wei, dim=-1)
         return wei @ v #(B,T,head_size) 
 
+class Multihead(nn.Module):
+    def __init__(self, num_heads, head_size, *args, **kwargs):
+       super().__init__(*args, **kwargs)
+       self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+    
+    def forward(self, x):
+       return torch.cat([h(x) for h in self.heads], dim=-1)
 
 class BigramLanguageModel(nn.Module):
   def __init__(self):
     super().__init__()
     self.token_embedding_table = nn.Embedding(vocab_size, embedding_size)
     self.position_embedding_table = nn.Embedding(block_size, embedding_size)
-    self.single_head_trans = Head(embedding_size)
+    # self.single_head_attn = Head(embedding_size)
+    self.multi_head_attn = Multihead(4, embedding_size//4)
     self.lm_head = nn.Linear(embedding_size, vocab_size)
 
   def forward(self, idx, targets=None):
@@ -106,7 +114,7 @@ class BigramLanguageModel(nn.Module):
     tok_emb = self.token_embedding_table(idx) # (B,T,embedding_size)
     pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,embedding_size)
     x = tok_emb + pos_emb # (broadcast) (B,T,embedding_size)
-    x = self.single_head_trans(x)
+    x = self.multi_head_attn(x)
     logits = self.lm_head(x) # (B,T,vocab_size)
 
     if targets is None:
