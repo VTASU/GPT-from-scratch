@@ -1,0 +1,64 @@
+# -------------------------
+# Python
+# -------------------------
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# -------------------------
+# Conda / Virtual Envs
+# -------------------------
+.env
+.venv
+venv/
+env/
+conda-env/
+*.conda
+*.lock
+
+# -------------------------
+# Jupyter Notebooks
+# -------------------------
+.ipynb_checkpoints/
+*.ipynb_convert/
+
+# -------------------------
+# Logs & Outputs
+# -------------------------
+*.log
+logs/
+wandb/
+lightning_logs/
+mlruns/
+results/
+
+# -------------------------
+# Datasets / Models
+# -------------------------
+data/
+datasets/
+models/
+*.csv
+*.tsv
+*.json
+*.parquet
+*.zip
+*.tar.gz
+*.h5
+*.pt
+*.pth
+*.ckpt
+
+# -------------------------
+# IDE / OS specific
+# -------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
