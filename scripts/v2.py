@@ -18,8 +18,8 @@ block_size = 8 # what is the maximum context length for predictions?
 embedding_size = 32
 train_val_split = 0.9
 eval_iters = 100
-max_iters = 5000
-eval_interval = 500
+max_iters = 100
+eval_interval = 10
 learning_rate = 3e-4
 
 # GPU
@@ -74,14 +74,18 @@ def evaluate_loss():
 
 # Model
 class BigramLanguageModel(nn.Module):
-  def __init__(self, vocab_size):
+  def __init__(self):
     super().__init__()
     self.token_embedding_table = nn.Embedding(vocab_size, embedding_size)
+    self.position_embedding_table = nn.Embedding(block_size, embedding_size)
     self.lm_head = nn.Linear(embedding_size, vocab_size)
 
   def forward(self, idx, targets=None):
-    tok_emb = self.token_embedding_table(idx) # B x T x embedding_size
-    logits = self.lm_head(tok_emb) # (B,T,vocab_size)
+    B, T = idx.shape
+    tok_emb = self.token_embedding_table(idx) # (B,T,embedding_size)
+    pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,embedding_size)
+    x = tok_emb + pos_emb # (broadcast) (B,T,embedding_size)
+    logits = self.lm_head(x) # (B,T,vocab_size)
 
     if targets is None:
       loss = None
@@ -92,17 +96,19 @@ class BigramLanguageModel(nn.Module):
       loss = F.cross_entropy(logits, targets)
     return logits, loss
 
-  def generate(self, idx, max_new_tokens=50):
+  def generate(self, idx, max_new_tokens):
     for _ in range(max_new_tokens):
-      logits, loss = self(idx)
+      d = idx[:,-block_size:]
+      logits, loss = self(d)
       logits = logits[:, -1, :]
       probs = F.softmax(logits, dim=-1)
       idx_next = torch.multinomial(probs, num_samples=1)
       idx = torch.cat((idx, idx_next), dim=1)
     return idx
 
+
 # Model Initialization
-m = BigramLanguageModel(vocab_size)
+m = BigramLanguageModel()
 m = m.to(device)
 
 
