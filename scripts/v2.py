@@ -21,6 +21,7 @@ eval_iters = 100
 max_iters = 100
 eval_interval = 10
 learning_rate = 3e-4
+head_size = 16
 
 # GPU
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -73,11 +74,31 @@ def evaluate_loss():
 
 
 # Model
+class Head(nn.Module):
+    def __init__(self, head_size, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.Key = nn.Linear(embedding_size, head_size, bias=False)
+        self.Query = nn.Linear(embedding_size, head_size, bias=False)
+        self.Value = nn.Linear(embedding_size, head_size, bias=False)
+        self.register_buffer('tril',torch.tril(torch.ones((block_size, block_size), device=device)))
+
+    def forward(self, x):
+        B,T,C = x.shape
+        k: torch.Tensor = self.Key(x) #(B,T,head_size)
+        q: torch.Tensor = self.Query(x) #(B,T,head_size)
+        v: torch.Tensor = self.Value(x) #(B,T,head_size)
+        wei: torch.Tensor = q @ k.transpose(-2,-1)*(head_size**-0.5) #(B,T,T)
+        wei = wei.masked_fill(self.tril[:T, :T]==0, float('-inf')) #(B,T,T)
+        wei = F.softmax(wei, dim=-1)
+        return wei @ v #(B,T,head_size) 
+
+
 class BigramLanguageModel(nn.Module):
   def __init__(self):
     super().__init__()
     self.token_embedding_table = nn.Embedding(vocab_size, embedding_size)
     self.position_embedding_table = nn.Embedding(block_size, embedding_size)
+    self.single_head_trans = Head(embedding_size)
     self.lm_head = nn.Linear(embedding_size, vocab_size)
 
   def forward(self, idx, targets=None):
@@ -85,6 +106,7 @@ class BigramLanguageModel(nn.Module):
     tok_emb = self.token_embedding_table(idx) # (B,T,embedding_size)
     pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,embedding_size)
     x = tok_emb + pos_emb # (broadcast) (B,T,embedding_size)
+    x = self.single_head_trans(x)
     logits = self.lm_head(x) # (B,T,vocab_size)
 
     if targets is None:
