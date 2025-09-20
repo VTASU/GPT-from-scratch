@@ -10,18 +10,17 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-#hyperparameters
+
+# Hyperparameters
 torch.manual_seed(1337)
 batch_size = 4 # how many INDEPENDENT sequences will we process in parallel?
 block_size = 8 # what is the maximum context length for predictions?
+embedding_size = 32
 train_val_split = 0.9
 eval_iters = 100
-max_iters = 50000
-eval_interval = 5000
-learning_rate = 1e-3
-emb_size = 32
-head_size = 16
-num_heads = 5
+max_iters = 5000
+eval_interval = 500
+learning_rate = 3e-4
 
 # GPU
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -49,6 +48,7 @@ train_data = data[:train_size]
 val_data = data[train_size:]
 
 
+# Helper functions
 def get_batch(split):
   data = train_data if split == 'train' else val_data
   ix = torch.randint(len(data) - block_size, (batch_size,))
@@ -71,46 +71,17 @@ def evaluate_loss():
   m.train()
   return out
 
-class Head(nn.Module):
-    def __init__(self, head_size):
-        super().__init__()
-        self.Key = nn.Linear(emb_size, head_size, bias=False)
-        self.Query = nn.Linear(emb_size, head_size, bias=False)
-        self.Value = nn.Linear(emb_size, head_size, bias=False)
-        self.register_buffer('tril',torch.tril(torch.ones((block_size, block_size))))
 
-    def forward(self, x):
-        k = self.Key(x)
-        q = self.Query(x)
-        wei = q @ k.transpose(-2,-1)
-        wei = wei.masked_fill(self.tril==0, float('-inf'))
-        wei = F.softmax(wei, dim=-1)
-        v = self.Value(x)
-        return wei @ v
-
-class Multihead(nn.Module):
-    def __init__(self, head_size, num_heads):
-        super().__init__()
-        self.multiheads = nn.ModuleList([Head(head_size) for i in range(num_heads)])
-
-    def forward(self, x):
-       return torch.cat([head(x) for head in self.multiheads], dim=-1)
-    
-
+# Model
 class BigramLanguageModel(nn.Module):
-  def __init__(self):
+  def __init__(self, vocab_size):
     super().__init__()
-    self.token_embedding_table = nn.Embedding(vocab_size, emb_size)
-    self.position_embedding_table = nn.Embedding(block_size, emb_size)
-    self.self_attn = Multihead(head_size, num_heads)
-    self.lm_head = nn.Linear(emb_size, vocab_size)
+    self.token_embedding_table = nn.Embedding(vocab_size, embedding_size)
+    self.lm_head = nn.Linear(embedding_size, vocab_size)
 
   def forward(self, idx, targets=None):
-    B, T = idx.shape
-    tok_emb = self.token_embedding_table(idx) # B x T x C
-    pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # T,C
-    x = tok_emb + pos_emb
-    logits = self.lm_head(x) # B T vocab_size
+    tok_emb = self.token_embedding_table(idx) # B x T x embedding_size
+    logits = self.lm_head(tok_emb) # (B,T,vocab_size)
 
     if targets is None:
       loss = None
@@ -123,21 +94,23 @@ class BigramLanguageModel(nn.Module):
 
   def generate(self, idx, max_new_tokens=50):
     for _ in range(max_new_tokens):
-      inp = idx[:,-block_size:]
-      logits, loss = self(inp)
+      logits, loss = self(idx)
       logits = logits[:, -1, :]
       probs = F.softmax(logits, dim=-1)
       idx_next = torch.multinomial(probs, num_samples=1)
       idx = torch.cat((idx, idx_next), dim=1)
     return idx
 
-m = BigramLanguageModel()
+# Model Initialization
+m = BigramLanguageModel(vocab_size)
 m = m.to(device)
 
+
+# Optimizer Initialization
 optm = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
-# I need to create a training loop
 
+# Training loop
 for iter in range(max_iters):
     if iter % eval_interval == 0:
         losses = evaluate_loss()
@@ -150,6 +123,7 @@ for iter in range(max_iters):
     loss.backward()
     optm.step()
 
-  
+
+# Output generation 
 context = torch.zeros((1,1), dtype=torch.long, device=device)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
