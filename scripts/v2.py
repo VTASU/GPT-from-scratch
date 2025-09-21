@@ -1,11 +1,14 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import wget
+from datetime import datetime
 import os
 
 
 # Hyperparameters
-save_dir = "checkpoints"
+save_dir = 'checkpoints'
+data_file = 'input.txt'
 torch.manual_seed(1337)
 batch_size = 64  # how many INDEPENDENT sequences will we process in parallel?
 block_size = 256  # what is the maximum context length for predictions?
@@ -13,6 +16,7 @@ embedding_size = 384
 train_val_split = 0.9
 eval_iters = 200
 max_iters = 5000
+eval_mode = "False" # If true only one step of training is done.
 eval_interval = 500
 learning_rate = 3e-4
 num_heads = 6
@@ -20,35 +24,27 @@ num_layers = 6
 dropout = 0.2
 
 
-def load_latest_checkpoint(model, optimizer=None, device="cpu"):
-    pt_files = [f for f in os.listdir(save_dir) if f.endswith(".pt")]
-    if not pt_files:
-        # raise FileNotFoundError(f"No checkpoints found in {save_dir}")
-        return model
-
-    def get_step(fname):
-        parts = fname.split("_")
-        step_str = parts[-1].split(".")[0]
-        return int(step_str)
-
-    latest = max(pt_files, key=get_step)
-    path = os.path.join(save_dir, latest)
-    ckpt = torch.load(path, map_location=device)
-    model.load_state_dict(ckpt if isinstance(ckpt, dict) else ckpt["model"])
-
-    if optimizer and isinstance(ckpt, dict) and "optimizer" in ckpt:
-        optimizer.load_state_dict(ckpt["optimizer"])
-
-    print(f"Loaded checkpoint: {latest}")
-    return model
-
-
 # GPU
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
 
+
 # Raw Data loading
-with open("../notebooks/input.txt", "r", encoding="utf-8") as f:
+current_dir = os.getcwd() # Get the current working directory
+parent_dir = os.path.dirname(current_dir) # Get the parent directory
+data_dir = os.path.join(parent_dir,"data")
+
+if os.path.isdir(data_dir):
+    print(f"data folder exists: {data_dir}")
+    print(f"loading data: {data_file}")
+    data_file_path = os.path.join(data_dir,data_file)
+else:
+    os.makedirs(data_dir)
+    print(f'downloading data: {data_dir}')
+    wget.download("https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",out=data_dir)
+    data_file_path = os.path.join(data_dir,data_file)
+
+with open(data_file_path, "r", encoding="utf-8") as f:
     text = f.read()
 
 chars = sorted(list(set(text)))
@@ -92,6 +88,24 @@ def evaluate_loss():
         out[split] = losses.mean()
     m.train()
     return out
+
+def load_latest_checkpoint(model: nn.Module, optimizer: torch.optim =None, device="cpu"):
+    pt_files = [f for f in os.listdir(save_dir) if f.endswith(".pt")]
+    if not pt_files:
+        # raise FileNotFoundError(f"No checkpoints found in {save_dir}")
+        return model
+
+    latest = max(pt_files, key=lambda f: os.path.getmtime(os.path.join(save_dir, f)))
+    path = os.path.join(save_dir, latest)
+    print(f'loading checkpoint: {path}')
+    ckpt = torch.load(path, map_location=device)
+    model.load_state_dict(ckpt if isinstance(ckpt, dict) else ckpt["model"])
+
+    if optimizer and isinstance(ckpt, dict) and "optimizer" in ckpt:
+        optimizer.load_state_dict(ckpt["optimizer"])
+
+    print(f"loaded checkpoint: {latest}")
+    return model
 
 
 # Model
@@ -220,7 +234,7 @@ for iter in range(max_iters):
         print(
             f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
         )
-        torch.save(m.state_dict(), f"{save_dir}/model_step_{iter}.pt")
+        torch.save(m.state_dict(), f"{save_dir}/model_{datetime.now()}.pt")
 
     xb, yb = get_batch("train")
 
@@ -228,8 +242,12 @@ for iter in range(max_iters):
     optm.zero_grad(set_to_none=True)
     loss.backward()
     optm.step()
+    
+    if eval_mode:
+        break
 
 
 # Output generation
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+
