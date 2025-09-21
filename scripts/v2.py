@@ -22,7 +22,8 @@ dropout = 0.2
 def load_latest_checkpoint(model, optimizer=None, device="cpu"):
     pt_files = [f for f in os.listdir(save_dir) if f.endswith(".pt")]
     if not pt_files:
-        raise FileNotFoundError(f"No checkpoints found in {save_dir}")
+        # raise FileNotFoundError(f"No checkpoints found in {save_dir}")
+        return model
 
     def get_step(fname):
         parts = fname.split("_")
