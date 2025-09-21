@@ -61,4 +61,4 @@ models/
 *.swp
 .DS_Store
 Thumbs.db
-
+scripts/checkpoints/*
