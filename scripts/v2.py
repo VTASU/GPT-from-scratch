@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import os
 
 
 # Hyperparameters
+save_dir = "checkpoints"
 torch.manual_seed(1337)
 batch_size = 64 # how many INDEPENDENT sequences will we process in parallel?
 block_size = 256 # what is the maximum context length for predictions?
@@ -16,6 +18,27 @@ learning_rate = 3e-4
 num_heads = 6
 num_layers = 6
 dropout = 0.2
+
+def load_latest_checkpoint(model, optimizer=None, device="cpu"):
+    pt_files = [f for f in os.listdir(save_dir) if f.endswith(".pt")]
+    if not pt_files:
+        raise FileNotFoundError(f"No checkpoints found in {save_dir}")
+
+    def get_step(fname):
+        parts = fname.split("_")
+        step_str = parts[-1].split(".")[0]
+        return int(step_str)
+
+    latest = max(pt_files, key=get_step)
+    path = os.path.join(save_dir, latest)
+    ckpt = torch.load(path, map_location=device)
+    model.load_state_dict(ckpt if isinstance(ckpt, dict) else ckpt["model"])
+
+    if optimizer and isinstance(ckpt, dict) and "optimizer" in ckpt:
+        optimizer.load_state_dict(ckpt["optimizer"])
+
+    print(f"Loaded checkpoint: {latest}")
+    return model
 
 # GPU
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -173,6 +196,7 @@ m = m.to(device)
 
 # Optimizer Initialization
 optm = torch.optim.AdamW(m.parameters(), lr=learning_rate)
+m = load_latest_checkpoint(m, optimizer=optm, device=device)
 
 
 # Training loop
@@ -180,6 +204,7 @@ for iter in range(max_iters):
     if iter % eval_interval == 0:
         losses = evaluate_loss()
         print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        torch.save(m.state_dict(), f"{save_dir}/model_step_{iter}.pt")
 
     xb, yb = get_batch("train")
 
