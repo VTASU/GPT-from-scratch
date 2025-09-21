@@ -33,6 +33,7 @@ print(device)
 current_dir = os.getcwd() # Get the current working directory
 parent_dir = os.path.dirname(current_dir) # Get the parent directory
 data_dir = os.path.join(parent_dir,"data")
+save_dir = os.path.join(parent_dir, save_dir)
 
 if os.path.isdir(data_dir):
     print(f"data folder exists: {data_dir}")
@@ -43,6 +44,9 @@ else:
     print(f'downloading data: {data_dir}')
     wget.download("https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",out=data_dir)
     data_file_path = os.path.join(data_dir,data_file)
+
+if not os.path.isdir(save_dir):
+    os.makedirs(save_dir)
 
 with open(data_file_path, "r", encoding="utf-8") as f:
     text = f.read()
